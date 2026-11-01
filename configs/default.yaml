@@ -1,0 +1,5 @@
+slope_method: linear_fit
+smooth_sigma: 0.0
+smooth_window: 5
+onset_fallback_idx: 2
+tr: null

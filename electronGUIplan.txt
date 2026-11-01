@@ -1,0 +1,204 @@
+================================================================================
+PLAN: DCEMAPPING — Electron + React + FastAPI Desktop App
+================================================================================
+
+Saved: 2026-07-16
+Reference design: /temp/DIFFSUITE and /temp/MRQUANT/electronGUIplan.txt
+Target: /temp/DCEmapping  (flat src/ layout; run via `python main.py`
+        or `python -m src.pipeline`; NO pyproject.toml / no installed entry point)
+
+--------------------------------------------------------------------------------
+ARCHITECTURE (identical to DIFFSUITE / MRQUANT / CTPAMAP)
+--------------------------------------------------------------------------------
+Electron main spawns the FastAPI backend as a subprocess. Because DCEmapping is
+NOT an installed package, the backend is launched with cwd = /temp/DCEmapping so
+that `import src.pipeline` / `from src.api import app` resolves:
+
+    cd <DCEmapping> && python -m uvicorn src.api:app --host 127.0.0.1 --port 18923
+
+(Alternatively make it a proper package: add pyproject.toml + rename src/->dcemapping/,
+then `python -m uvicorn dcemapping.api:app`. This plan assumes the cwd approach
+to avoid touching existing module names; the package-ize option is noted below.)
+
+Electron polls /api/status until 200, then opens React renderer; kills python
+on quit. React wizard <-> FastAPI over HTTP (CORS allow_origins=["*"]).
+GUI is a thin frontend; DCE compute logic (src/maps.py, src/pipeline.py) unchanged.
+
+  PYTHON (FastAPI backend, src/api.py)
+    - Endpoints per wizard step / action.
+    - Load endpoint: takes input folder/file + optional mask/dwi, stores session.
+    - Run endpoint: runs the frame/file processing in BackgroundTasks; updates
+      JOBS (status, progress_pct, outputs, error).
+    - Progress endpoint polling every 500ms.
+    - /api/nifti?path=<abs> serves output NIfTI for the viewer.
+    - CORS enabled.
+
+  JS (Electron + React + TS) — same scaffold as the sibling projects.
+
+--------------------------------------------------------------------------------
+1. PYTHON BACKEND — src/api.py  (wrap existing pipeline functions)
+--------------------------------------------------------------------------------
+DCEmapping already has a clean reusable pipeline. Expose a thin wrapper:
+
+    run_dce(input_path, out_dir, args_dict):
+        # reconstruct an argparse.Namespace from args_dict, then call
+        from src.pipeline import run   # or call _process_file/_process_frames directly
+        run(make_namespace(args_dict))
+
+run() handles two input shapes:
+  - A directory containing either 3D frame series (glob --pattern) or 4D NIfTI.
+  - A single 4D NIfTI file.
+
+For real progress, add an OPTIONAL progress_callback to _process_file /
+_process_frames invoked at stages (load -> smooth -> motion -> maps -> save).
+This is a minimal, safe addition that does not alter the computation.
+
+  ENDPOINTS
+    GET  /api/status                       -> {ok, version, python}
+    POST /api/load   {input, mask?, dwi?, out?} -> session_id + metadata
+    POST /api/run    {session_id, params}  -> job_id (BackgroundTasks)
+    GET  /api/run/{job_id}                 -> {status, progress_pct, outputs?, error?}
+    GET  /api/nifti?path=<abs>             -> FileResponse octet-stream
+
+  SESSIONS: session_id -> {input, out_dir, meta}
+  JOBS:    job_id    -> {status, progress_pct, outputs, error}
+
+  Outputs produced (served via /api/nifti):
+    <stem>_tmax.nii.gz, <stem>_washin.nii.gz, <stem>_segment_washin.nii.gz,
+    <stem>_washout.nii.gz, <stem>_upslope_index.nii.gz, <stem>_maxpct_enhancement.nii.gz
+
+  Optional: also expose the configs/default.yaml values as defaults in the GUI.
+
+--------------------------------------------------------------------------------
+2. OPTIONAL TAGS -> CHECKBOXES / TEXTBOXES  (from src/pipeline.py build_parser)
+--------------------------------------------------------------------------------
+  INPUTS (step 1)
+    --input/-i   [folder or file picker]  DCE NIfTI folder OR single 4D NIfTI
+    --output_dir/-o [textbox]  Output dir (default: <input_parent>/DCEmapping_output)
+    --mask/-m    [file picker]  Optional 3D binary mask NIfTI
+    --pattern    [textbox]  Glob pattern for 3D frame files (default *t1_vibe_tra_dyn*)
+
+  TIMING / SAMPLING (step 2)
+    --tr            [num]      Temporal resolution sec (default 14.0)
+    --onset_fallback [num]     Min onset index (default 2)
+    --skip_first    [checkbox] Drop first frame when loading from --pattern
+    --skip_frames   [num]      Drop N frames from start (overrides --skip_first if >0)
+
+  MAP OPTIONS (step 2)
+    --slope_method  [select: linear_fit | two_point | quadratic]  (default linear_fit)
+    --smooth_sigma  [num]      Gaussian temporal smoothing sigma (0 = off)
+    --smooth_window [num]      Savitzky-Golay window (used if smooth_sigma=0 and >2)
+    --spatial_smooth_sigma [num] 3D spatial smoothing sigma per frame (default 0.5)
+
+  AUTO-MASKING (step 2)
+    --dwi_mask      [checkbox]  Auto-build mask from lowest-b DWI in input folder
+    --dwi_pattern   [textbox]  Glob for DWI files (default *dwi*)  [shown if --dwi_mask]
+    --dwi_threshold [num]      DWI mask threshold (default 0)       [shown if --dwi_mask]
+
+  BATCH
+    --yes/-y        [checkbox]  Skip confirmation prompt, process all detected files
+
+  Note: the CLI's interactive `input()` confirmation prompts are bypassed by the
+  GUI (always behaves as --yes). No logic change to the math.
+
+--------------------------------------------------------------------------------
+3. ELECTRON APP — DCEmapping/electron-app/  (copy DIFFSUITE scaffold, rename)
+--------------------------------------------------------------------------------
+  electron-app/
+    package.json          # name dcemapping-electron, main dist-electron/main/main.js
+    electron.vite.config.ts
+    electron/main.ts      # spawn: cd DCEmapping && python -m uvicorn src.api:app
+                          #   --port 18923; poll /api/status; IPC
+    electron/preload.ts   # contextBridge -> window.dcemapping
+    electron-builder.yml  # win: nsis; appId com.dcemapping.app; productName DCEMapping
+    index.html
+    src/
+      main.tsx
+      App.tsx             # stepper: 1 Inputs -> 2 Options -> 3 Run -> 4 Results
+      api/client.ts
+      types/index.ts
+      styles/global.css
+      components/
+        ErrorBoundary.tsx
+        InputStep.tsx       # input folder/file + mask + pattern
+        OptionsStep.tsx     # checkbox + textbox + select form from typed schema
+        RunStep.tsx         # progress bar polling /api/run/{job_id}
+        ResultsPanel.tsx    # output map list + NiftiViewer + Open Externally
+        NiftiViewer.tsx     # canvas viewer (reused from DIFFSUITE)
+
+  scripts: dev / build / build:win (electron-vite build && electron-builder --win)
+
+  PINNED VERSIONS (identical to sibling projects — vite@6 breaks SSR build):
+    electron-vite@^2.3.0, vite@^5.4.0, @vitejs/plugin-react@^4.3.4,
+    electron@^33.2.0, electron-builder@^25.1.8, typescript@^5.7.2,
+    react@^19.0.0, react-dom@^19.0.0, zustand@^5.0.2,
+    nifti-reader-js@^0.6.8, node-fetch@^2.7.0
+
+  electron.vite.config.ts KEY POINTS (same as DIFFSUITE):
+    - MUST be named electron.vite.config.ts
+    - main outDir dist-electron/main (fileName main.js); preload dist-electron/preload
+    - renderer outDir dist-electron/renderer, emptyOutDir:false
+    - main.ts references ../preload/preload.js and ../renderer/index.html
+
+  main.ts spawn note: set `cwd` to the DCEmapping project root so `src.api` and
+  `src.pipeline` import correctly. If instead you choose to package-ize
+  (rename src/ -> dcemapping/ + add pyproject.toml), spawn
+  `python -m uvicorn dcemapping.api:app` with cwd = project root.
+
+--------------------------------------------------------------------------------
+4. REACT WIZARD
+--------------------------------------------------------------------------------
+  App.tsx stepper (4 steps):
+    1 Inputs   -> InputStep (input folder/file, mask, pattern)
+    2 Options  -> OptionsStep (checkboxes + textboxes + slope_method select)
+    3 Run      -> RunStep (progress bar, polls /api/run/{job_id} every 500ms)
+    4 Results  -> ResultsPanel (6 output maps, NiftiViewer per map, Open Externally)
+
+  OptionsStep renders each option from a typed schema:
+    {type: checkbox|number|text|select, label, default, unit, dependsOn, group}
+    groups: Inputs / Timing+Sampling / Map options / Auto-masking / Batch.
+    --dwi_pattern / --dwi_threshold shown only when --dwi_mask checked.
+
+  NiftiViewer.tsx (reused):
+    - import * as nifti from "nifti-reader-js"  (ESM, never require)
+    - fetch -> arrayBuffer() -> RAW ArrayBuffer to isNIFTI/readHeader/readImage
+    - gzip: if isCompressed(buf) -> decompress(buf) first
+    - readImage(header, data) needs TWO args
+    - colormaps gray/turbo/jet, slice slider, stats + histogram
+
+--------------------------------------------------------------------------------
+5. AGENTS.md
+--------------------------------------------------------------------------------
+  Add DCEmapping structure, FastAPI endpoints, pinned versions, build pitfalls
+  (mirroring DIFFSUITE AGENTS.md). Note the cwd-based launch and the optional
+  progress_callback added to the process functions.
+
+--------------------------------------------------------------------------------
+6. VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  cd DCEmapping/electron-app
+  npm install
+  npm run build:win      # -> dist-electron/dist/DCEMapping-<version>-setup.exe (NSIS)
+
+  - Launch exe; confirm /api/status 200 (backend spawned).
+  - API drive: load(input) -> run(params) -> poll to progress_pct=100 ->
+    fetch an output via /api/nifti (200).
+  - Click through wizard; confirm NIfTI viewer renders, ErrorBoundary present.
+  - Test data: supply a DCE folder (3D frame series or a 4D NIfTI) + optional mask.
+
+--------------------------------------------------------------------------------
+KEY PITFALLS (honor these)
+--------------------------------------------------------------------------------
+  - electron-vite config file MUST be electron.vite.config.ts (not vite.config.ts).
+  - Pin electron-vite@2 + vite@5 + @vitejs/plugin-react@4 (vite@6 breaks SSR build).
+  - main/preload output dirs must match package.json "main" (dist-electron/main/main.js).
+  - emptyOutDir:false on renderer or it deletes main/preload outputs.
+  - rcedit "Unable to commit changes": a previous DCEMapping.exe still running -> kill it.
+  - BackgroundTasks progress: pass a real callback (stage hooks), no monkeypatch.
+  - CORS enabled or renderer cross-origin fetches blocked.
+  - NIfTI viewer: ESM import; pass ArrayBuffer (not TypedArray); handle gzip;
+    readImage needs (header, data).
+  - Wrap React tree in ErrorBoundary.
+  - DCEmapping is NOT pip-installed: launch uvicorn with cwd = project root so
+    `src` is importable (or package-ize first). CLI confirmation prompts are
+    bypassed by the GUI (treated as --yes).

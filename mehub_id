@@ -1,0 +1,8 @@
+{
+  "name": "DCEmapping",
+  "description": "DCE-MRI mapping utility (Python) converting enhancement curves to pharmacokinetic maps.",
+  "tags": [],
+  "stack": "auto",
+  "progress": "beta",
+  "version": "0.5"
+}
