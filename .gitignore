@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+*.pyc
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / Electron
+node_modules/
+electron-app/node_modules/
+electron-app/dist/
+*.tsbuildinfo
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# NIfTI / imaging scratch
+*.nii
+*.nii.gz
+*.nrrd
+
+# Local caches
+.env

@@ -1,0 +1,40 @@
+{
+  "name": "dcemapping-electron",
+  "version": "1.0.0",
+  "description": "DCE-MRI Perfusion Mapping Desktop App",
+  "main": "dist-electron/main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && tsc -p tsconfig.electron.json",
+    "build:linux": "tsc && vite build && tsc -p tsconfig.electron.json && electron-builder --linux",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "nifti-reader-js": "^0.6.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "pako": "^3.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.0",
+    "zustand": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.dcemapping.app",
+    "productName": "DCEMapping",
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "MedicalSoftware"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ]
+  }
+}
