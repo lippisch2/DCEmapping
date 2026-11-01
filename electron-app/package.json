@@ -2,7 +2,12 @@
   "name": "dcemapping-electron",
   "version": "1.0.0",
   "description": "DCE-MRI Perfusion Mapping Desktop App",
-  "main": "dist-electron/main/main.js",
+  "homepage": "https://github.com/lippisch2/DCEmapping",
+  "author": {
+    "name": "lippisch2",
+    "email": "dcemapping@noreply.github.com"
+  },
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
