@@ -59,17 +59,11 @@ uvicorn src.api:app --reload      # or: python -m src.api
 The FastAPI app exposes `/api/status`, `/api/load`, `/api/run`, `/api/run/{job_id}`,
 and `/api/nifti` for the desktop GUI.
 
-### Desktop GUI (Electron + React)
+### Desktop GUI
 
-The `electron-app/` folder is a Vite + React + TypeScript frontend talking to
-the FastAPI backend through an Electron main process.
-
-```bash
-cd electron-app
-npm install
-npm run build          # Vite + TypeScript build
-npm run build:linux    # also packages AppImage + .deb via electron-builder
-```
+A desktop GUI was previously packaged with this project (Electron + React).
+It has been removed from this repository; the Python CLI + FastAPI backend
+remain the supported interface.
 
 ## Repository layout
 
@@ -88,15 +82,10 @@ DCEmapping/
 │   ├── io_utils.py              # NIfTI I/O, frame stacking, downsampling
 │   ├── preprocessing.py         # Masking, Savitzky–Golay, motion check
 │   ├── tic_derivatives.py       # Time-intensity curve derivatives
-│   └── api.py                   # FastAPI backend for the GUI
+│   └── api.py                   # FastAPI backend
 ├── tests/
 │   ├── test_maps.py             # Map computation tests
 │   └── test_synthetic_tic.py    # Synthetic time-intensity curve tests
-├── electron-app/                # Electron + React desktop GUI
-│   ├── src/                     # React + TypeScript source
-│   ├── electron/                # Electron main & preload scripts
-│   ├── dist-electron/           # Compiled Electron main process
-│   └── package.json             # electron-builder config (AppImage + .deb)
 └── cmatrix/                     # PowerShell helper + demo
     ├── cmatrix.psm1
     ├── demo.gif
@@ -125,15 +114,6 @@ any viewer.
   research and comparative analysis.
 - This is research software, not a medical device. Not cleared for clinical
   diagnosis.
-
-## Release assets
-
-Convenience binaries are attached to each GitHub release:
-
-| Asset | Platform |
-|-------|----------|
-| `DCEmapping-<version>-portable.exe` | Windows (portable, no install) |
-| `DCEmapping-<version>-x86_64.AppImage` | Linux (AppImage, run anywhere) |
 
 ## License
 
